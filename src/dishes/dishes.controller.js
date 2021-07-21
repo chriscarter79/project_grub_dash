@@ -3,92 +3,88 @@ const dishes = require(path.resolve("src/data/dishes-data"));
 const nextId = require("../utils/nextId");
 
 
-// middleware
-function hasRequiredFields(req, res, next) {
-  const { data: { name, description, price, image_url } = {} } = req.body;
-  const requiredFields = ['name', 'description', 'price', 'image_url'];
-  for (const field of requiredFields) {
-    if (!req.body.data[field]) {
-      next({ status: 400, message: `A '${field}' property is required.` });
-    }
-  }
-  next();
-}
-// middleware
-function validatePrice(req, res, next) {
-  const { data: { name, description, price, image_url } = {} } = req.body;
-  if (typeof price !== 'number') {
-    return res.status(400).json({ error: 'price must be a number' });
-  }
-  if (price < 0) {
-    return res.status(400).json({ error: 'price must be a number greater than zero' });
-  }
-  next();
-}
-// middleware
-function dishExists(req, res, next) {
-  const dishId = req.params.dishId;
+
+const dishExists = (req, res, next) => {
+  const { dishId } = req.params;
   const foundDish = dishes.find((dish) => dish.id === dishId);
-  if (foundDish) { 
-    res.locals.dish = foundDish
-    return next();
+  if (foundDish) {
+    res.locals.foundDish = foundDish;
+    next();
   }
   next({
     status: 404,
-    message: `dish id not found: ${req.params.dishId}`,
+    message: `Dish with id ${dishId} does not exist.`,
   });
-}
-//middleware
-function validateId(req, res, next) {
-  const dishId = req.params.dishId;
-  const { data: { id } } = req.body
-  if(id) {
-      if (dishId !== id) {
-      next({
-        status: 400,
-        message: `Dish id does not match route id. Dish: ${id}, Route: ${dishId}`,
-      });
-    }
+};
+const checkDish = (req, res, next) => {
+  const {
+    data: { name, description, price, image_url },
+  } = req.body;
+  if (!name || name == "")
+    return next({ status: 400, message: "Dish must include a name" });
+  if (!description || description == "")
+    return next({ status: 400, message: "Dish must include a description" });
+  if (!price)
+    return next({ status: 400, message: "Dish must include a price" });
+  if (typeof price !== "number" || price <= 0)
+    return next({
+      status: 400,
+      message: "Dish must have a price that is an integer greater than 0",
+    });
+  if (!image_url || image_url == "")
+    return next({ status: 400, message: "Dish must include an image_url" });
+  else {
+    res.locals.newDish = {
+      id: nextId(),
+      name: name,
+      description: description,
+      price: price,
+      image_url: image_url,
+    };
+    next();
   }
-  next();
-}
+};
 
-function list(req, res) {
+
+const list = (req, res, next) => {
   res.json({ data: dishes });
-}
+};
 
-function create(req, res) {
-  const { data: { name, description, price, image_url } = {} } = req.body;
-  const newName = {
-    id: nextId(),
-    name,
-    description,
-    price,
-    image_url,
+const create = (req, res, next) => {
+  dishes.push(res.locals.newDish);
+  res.status(201).json({ data: res.locals.newDish });
+};
+
+const read = (req, res, next) => {
+  res.json({ data: res.locals.foundDish });
+};
+
+const update = (req, res, next) => {
+  const originalDish = res.locals.foundDish;
+  const {
+    data: { id, name, price, description, image_url },
+  } = req.body;
+  if (id && id !== req.params.dishId)
+    return next({
+      status: 400,
+      message: `Dish id ${id} does not match dish id ${req.params.dishId}`,
+    });
+
+  res.locals.foundDish = {
+    id: originalDish.id,
+    name: name,
+    description: description,
+    price: price,
+    image_url: image_url,
   };
-  dishes.push(newName);
-  res.status(201).json({ data: newName });
-}
+  res.json({ data: res.locals.foundDish });
+};
 
-function read(req, res) {
-  res.json({ data: res.locals.dish });
-}
-
-function update(req, res) {
-  const { data: { name, description, price, image_url } = {} } = req.body;
-  const updatedDish = {
-    ...res.locals.dish,
-    name,
-    description,
-    price,
-    image_url,
-  };
-  res.json({ data: updatedDish });
-}
 
 module.exports = {
+  dishExists,
   list,
-  create: [hasRequiredFields, validatePrice, create],
+  create: [checkDish, create],
   read: [dishExists, read],
-  update: [dishExists, hasRequiredFields, validatePrice, validateId, update],
+  update: [dishExists, checkDish, update],
 }
